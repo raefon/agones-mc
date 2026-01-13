@@ -142,12 +142,39 @@ const htmlTemplate = `
     <script>
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
+
+            monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+                noSemanticValidation: true,
+                noSyntaxValidation: true
+            });
+            monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+                noSemanticValidation: true,
+                noSyntaxValidation: true
+            });
+            if (monaco.languages.json) {
+                monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+                    validate: false
+                });
+            }
+            if (monaco.languages.css) {
+                monaco.languages.css.cssDefaults.setDiagnosticsOptions({
+                    validate: false
+                });
+            }
+            // ----------------------------------------------
+
             window.editor = monaco.editor.create(document.getElementById('editor-container'), {
                 value: {{ .EditFile.Content }},
+                // We set language to 'plaintext' or a generic one to avoid logic errors,
+                // or you can leave your existing logic if you like the colors.
+                language: 'plaintext', 
                 theme: 'vs-dark',
-                automaticLayout: true
+                automaticLayout: true,
+                minimap: { enabled: false }, // Bonus: cleans up the UI
+                fontSize: 14
             });
         });
+
         async function saveFile() {
             const content = window.editor.getValue();
             const res = await fetch(window.location.pathname + "?edit={{ .EditFile.Name }}", {
@@ -155,6 +182,7 @@ const htmlTemplate = `
                 body: content
             });
             if (res.ok) window.location.href = window.location.pathname;
+            else alert('Save failed');
         }
     </script>
     {{ end }}
