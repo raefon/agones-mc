@@ -54,9 +54,9 @@ spec:
 
       containers:
         - name: mc-server
-          image: saulmaldonado/minecraft-bedrock-server # Custom minecraft bedrock server image
+          image: ghcr.io/raefon/agones-mc/minecraft-bedrock-server # Custom minecraft bedrock server image
           imagePullPolicy: Always
-          env: # Full list of ENV variables at https://github.com/saulmaldonado/docker-minecraft-bedrock-server
+          env: # Full list of ENV variables at https://github.com/raefon/docker-minecraft-bedrock-server
             - name: EULA
               value: "TRUE"
             - name: WORLD

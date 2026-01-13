@@ -1,6 +1,6 @@
 SHELL = /bin/bash
 BINARY := agones-mc
-IMAGE := saulmaldonado/$(BINARY)
+IMAGE := ghcr.io/raefon/$(BINARY)
 COMMIT := $(shell git rev-parse --short HEAD)
 VERSION := $(shell set -o pipefail; git describe --exact-match --tags HEAD 2> /dev/null | cut -c 2- || echo ${COMMIT})
 BUILD_FLAGS ?= -v

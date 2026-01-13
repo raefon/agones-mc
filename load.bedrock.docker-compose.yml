@@ -17,7 +17,7 @@ services:
       - ${GOOGLE_APPLICATION_CREDENTIALS}:/root/.config/gcloud/application_default_credentials.json
 
   minecraft:
-    image: saulmaldonado/minecraft-bedrock-server
+    image: ghcr.io/raefon/agones-mc/minecraft-bedrock-server
     environment:
       EULA: 'TRUE'
       WORLD: '/data/world.zip'
