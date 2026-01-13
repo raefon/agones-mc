@@ -32,6 +32,11 @@ func Run() error {
 	cfg := config.NewFileServerConfig()
 	vol := cfg.GetVolume()
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8081"
+	}
+
 	http.Handle("/", http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 
 		switch r.Method {
@@ -69,6 +74,6 @@ func Run() error {
 		}
 	}))
 
-	logger.Info("starting server on :8080")
-	return http.ListenAndServe(":8080", nil)
+	logger.Info("starting server on :" + port)
+	return http.ListenAndServe(":"+port, nil) // 2. Use the dynamic port
 }
