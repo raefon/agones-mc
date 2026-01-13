@@ -13,14 +13,14 @@
   <p align="center">
   Minecraft server CLI for Agones GameServers
     <br />
-    <a href="https://github.com/saulmaldonado/agones-mc"><strong>Explore the docs »</strong></a>
+    <a href="https://github.com/raefon/agones-mc"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/saulmaldonado/agones-mc/tree/main/example/mc-server.yml">View Example</a>
+    <a href="https://github.com/raefon/agones-mc/tree/main/example/mc-server.yml">View Example</a>
     ·
-    <a href="https://github.com/saulmaldonado/agones-mc/issues">Report Bug</a>
+    <a href="https://github.com/raefon/agones-mc/issues">Report Bug</a>
     ·
-    <a href="https://github.com/saulmaldonado/agones-mc/issues">Request Feature</a>
+    <a href="https://github.com/raefon/agones-mc/issues">Request Feature</a>
   </p>
 </p>
 
@@ -133,7 +133,7 @@ template:
             value: 'TRUE'
 
       - name: mc-monitor
-        image: saulmaldonado/agones-mc # monitor
+        image: ghcr.io/raefon/agones-mc # monitor
         args:
           - monitor
         env:
@@ -207,7 +207,7 @@ template:
             name: world-vol
 
       - name: mc-backup
-        image: saulmaldonado/agones-mc # backup
+        image: ghcr.io/raefon/agones-mc # backup
         args:
           - backup
         env:
@@ -285,7 +285,7 @@ template:
   spec:
     initContainers:
       - name: mc-load
-        image: saulmaldonado/agones-mc # backup
+        image: ghcr.io/raefon/agones-mc # backup
         args:
           - load
         env:
@@ -393,7 +393,7 @@ template:
             name: world-vol
 
       - name: mc-fileserver # fileserver
-          image: saulmaldonado/agones-mc
+          image: ghcr.io/raefon/agones-mc
           args:
             - fileserver
           env:
@@ -429,7 +429,7 @@ make docker-compose.load
 
 ## Roadmap
 
-See the [open issues](https://github.com/saulmaldonado/agones-mc/issues) for a list of proposed features (and known issues).
+See the [open issues](https://github.com/raefon/agones-mc/issues) for a list of proposed features (and known issues).
 
 <!-- CONTRIBUTING -->
 
@@ -449,7 +449,7 @@ Contributions are what make the open source community such an amazing place to b
 1. Clone the repo
 
    ```sh
-   git clone https://github.com/saulmaldonado/agones-mc.git
+   git clone https://github.com/raefon/agones-mc.git
    ```
 
 2. Build
@@ -467,7 +467,7 @@ Contributions are what make the open source community such an amazing place to b
 1. Clone the repo
 
    ```sh
-   git clone https://github.com/saulmaldonado/agones-mc.git
+   git clone https://github.com/raefon/agones-mc.git
    ```
 
 2. Build
@@ -514,12 +514,12 @@ Give a ⭐️ if this project helped you!
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 
 [contributors-shield]: https://img.shields.io/github/contributors/saulmaldonado/agones-mc.svg?style=for-the-badge
-[contributors-url]: https://github.com/saulmaldonado/agones-mc/graphs/contributors
+[contributors-url]: https://github.com/raefon/agones-mc/graphs/contributors
 [forks-shield]: https://img.shields.io/github/forks/saulmaldonado/agones-mc.svg?style=for-the-badge
-[forks-url]: https://github.com/saulmaldonado/agones-mc/network/members
+[forks-url]: https://github.com/raefon/agones-mc/network/members
 [stars-shield]: https://img.shields.io/github/stars/saulmaldonado/agones-mc.svg?style=for-the-badge
-[stars-url]: https://github.com/saulmaldonado/agones-mc/stargazers
+[stars-url]: https://github.com/raefon/agones-mc/stargazers
 [issues-shield]: https://img.shields.io/github/issues/saulmaldonado/agones-mc.svg?style=for-the-badge
-[issues-url]: https://github.com/saulmaldonado/agones-mc/issues
+[issues-url]: https://github.com/raefon/agones-mc/issues
 [license-shield]: https://img.shields.io/github/license/saulmaldonado/agones-mc.svg?style=for-the-badge
-[license-url]: https://github.com/saulmaldonado/agones-mc/blob/master/LICENSE.txt
+[license-url]: https://github.com/raefon/agones-mc/blob/master/LICENSE.txt

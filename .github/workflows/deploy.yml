@@ -22,7 +22,7 @@ jobs:
       id: meta
       uses: crazy-max/ghaction-docker-meta@v2
       with:
-        images: saulmaldonado/agones-mc
+        images: ghcr.io/raefon/agones-mc
         flavor: |
           latest=true
         tags: |

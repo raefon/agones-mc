@@ -7,7 +7,7 @@ import (
 
 	sdk "agones.dev/agones/sdks/go"
 
-	"github.com/saulmaldonado/agones-mc/internal/config"
+	"github.com/raefon/agones-mc/internal/config"
 )
 
 // Minecraft server pinger and SDK state manager

@@ -1,4 +1,4 @@
-module github.com/saulmaldonado/agones-mc
+module github.com/raefon/agones-mc
 
 go 1.16
 

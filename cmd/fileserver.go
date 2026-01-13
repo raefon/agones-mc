@@ -6,8 +6,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/saulmaldonado/agones-mc/internal/config"
-	"github.com/saulmaldonado/agones-mc/pkg/fileserver"
+	"github.com/raefon/agones-mc/internal/config"
+	"github.com/raefon/agones-mc/pkg/fileserver"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )

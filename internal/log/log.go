@@ -3,7 +3,7 @@ package log
 import (
 	"go.uber.org/zap"
 
-	"github.com/saulmaldonado/agones-mc/internal/config"
+	"github.com/raefon/agones-mc/internal/config"
 )
 
 const (

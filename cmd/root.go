@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/saulmaldonado/agones-mc/internal/config"
-	"github.com/saulmaldonado/agones-mc/internal/log"
+	"github.com/raefon/agones-mc/internal/config"
+	"github.com/raefon/agones-mc/internal/log"
 )
 
 var logger *zap.Logger

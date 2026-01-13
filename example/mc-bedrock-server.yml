@@ -37,7 +37,7 @@ spec:
               name: world-vol
 
         - name: mc-monitor
-          image: saulmaldonado/agones-mc
+          image: ghcr.io/raefon/agones-mc
           args:
             - monitor
           env:
@@ -56,7 +56,7 @@ spec:
           imagePullPolicy: Always
 
         - name: mc-backup
-          image: saulmaldonado/agones-mc # backup
+          image: ghcr.io/raefon/agones-mc # backup
           args:
             - backup
           env:
@@ -81,7 +81,7 @@ spec:
               name: world-vol
 
         - name: mc-fileserver # fileserver
-          image: saulmaldonado/agones-mc
+          image: ghcr.io/raefon/agones-mc
           args:
             - fileserver
           env:

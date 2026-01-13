@@ -36,7 +36,7 @@ spec:
               name: world-vol
 
         - name: mc-monitor
-          image: saulmaldonado/agones-mc # monitor
+          image: ghcr.io/raefon/agones-mc # monitor
           env:
             - name: INITIAL_DELAY
               value: 60s
@@ -51,7 +51,7 @@ spec:
           imagePullPolicy: Always
 
         - name: mc-backup
-          image: saulmaldonado/agones-mc # backup
+          image: ghcr.io/raefon/agones-mc # backup
           args:
             - backup
           env:
@@ -74,7 +74,7 @@ spec:
               name: world-vol
 
         - name: mc-fileserver # fileserver
-          image: saulmaldonado/agones-mc
+          image: ghcr.io/raefon/agones-mc
           args:
             - fileserver
           env:

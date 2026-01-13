@@ -1,6 +1,6 @@
 package main
 
-import "github.com/saulmaldonado/agones-mc/cmd"
+import "github.com/raefon/agones-mc/cmd"
 
 func main() {
 	cmd.Execute()

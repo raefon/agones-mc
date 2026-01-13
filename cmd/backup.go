@@ -14,10 +14,10 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/saulmaldonado/agones-mc/internal/config"
-	"github.com/saulmaldonado/agones-mc/pkg/backup"
-	"github.com/saulmaldonado/agones-mc/pkg/backup/google"
-	"github.com/saulmaldonado/agones-mc/pkg/signal"
+	"github.com/raefon/agones-mc/internal/config"
+	"github.com/raefon/agones-mc/pkg/backup"
+	"github.com/raefon/agones-mc/pkg/backup/google"
+	"github.com/raefon/agones-mc/pkg/signal"
 )
 
 var backupCmd = cobra.Command{
