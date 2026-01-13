@@ -1,29 +1,32 @@
-# Use Go 1.24 on Alpine for a small, modern build environment
+# Use Go 1.24 on Alpine
 FROM golang:1.24-alpine AS build
 
-# Install make and ca-certificates (required for building and HTTPS)
+# Install build tools
 RUN apk add --no-cache make git ca-certificates
 
 WORKDIR /agones-mc/
 
-# Copy module files first to leverage Docker layer caching
+# Pre-copy modules to improve caching
 COPY go.mod go.sum ./
 RUN go mod download
 
+# Copy source
 COPY . .
 
-# CGO_ENABLED=0 is required for the binary to run in a 'scratch' image
-# (otherwise it looks for libraries that don't exist in scratch)
-RUN CGO_ENABLED=0 make build
+# Fix: Ensure go.mod is tidy before building
+RUN go mod tidy
+
+# Accept VERSION from Makefile/GitHub Actions
+ARG VERSION=dev
+ARG ARCH=amd64
+
+# Use the Makefile to build
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} make build VERSION=${VERSION}
 
 # Final Stage
 FROM scratch
 WORKDIR /agones-mc/
-
-# Copy certificates so HTTPS requests work
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-
-# Copy the binary from the build stage
 COPY --from=build /agones-mc/build/agones-mc .
 
 ENTRYPOINT [ "./agones-mc" ]
