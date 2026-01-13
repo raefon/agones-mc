@@ -3,6 +3,7 @@ package fileserver
 import (
 	"archive/zip"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"io"
 	"net/http"
@@ -42,6 +43,8 @@ const htmlTemplate = `
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs/editor/editor.main.min.css">
     <style>
         #drop-zone.active { display: flex !important; }
+        /* Fixes the "flashing" by ignoring mouse events on the overlay's text/icons */
+        #drop-zone * { pointer-events: none; }
     </style>
 </head>
 <body class="bg-[#0d1117] text-slate-200 font-sans">
@@ -49,7 +52,7 @@ const htmlTemplate = `
     <div id="drop-zone" class="fixed inset-0 z-[100] bg-blue-600/20 border-4 border-dashed border-blue-500 hidden items-center justify-center backdrop-blur-sm">
         <div class="bg-[#161b22] p-8 rounded-2xl shadow-2xl text-center border border-blue-500/50">
             <i class="fas fa-cloud-upload-alt text-6xl text-blue-400 mb-4"></i>
-            <h2 class="text-2xl font-bold">Drop files to upload</h2>
+            <h2 class="text-2xl font-bold text-white">Drop files to upload</h2>
             <p class="text-slate-400">Uploading to /data{{ .CurrentPath }}</p>
         </div>
     </div>
@@ -64,17 +67,17 @@ const htmlTemplate = `
                 <p class="text-slate-500 font-mono text-sm mt-1">/data{{ .CurrentPath }}</p>
             </div>
             <div class="flex gap-2">
-                <button onclick="promptMkdir()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm font-semibold">
+                <button onclick="promptMkdir()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm font-semibold transition">
                     <i class="fas fa-folder-plus mr-2"></i>New Folder
                 </button>
-                <form action="?upload" method="POST" enctype="multipart/form-data" class="flex bg-slate-800 rounded border border-slate-700">
-                    <input type="file" name="file" class="text-xs p-1" id="fileInput" onchange="this.form.submit()">
-                    <button type="submit" class="bg-green-600 hover:bg-green-500 px-3 py-1 text-sm font-bold">Upload</button>
+                <form action="?upload" method="POST" enctype="multipart/form-data" class="flex bg-slate-800 rounded border border-slate-700 overflow-hidden">
+                    <input type="file" name="file" class="text-xs p-1 cursor-pointer" id="fileInput" onchange="this.form.submit()">
+                    <button type="submit" class="bg-green-600 hover:bg-green-500 px-3 py-1 text-sm font-bold transition">Upload</button>
                 </form>
             </div>
         </div>
 
-        <!-- Explorer Table (Same as before) -->
+        <!-- Explorer Table -->
         <div class="bg-[#161b22] rounded-lg border border-slate-700 shadow-xl overflow-hidden">
             <table class="w-full text-left">
                 <thead class="bg-slate-800/50 text-slate-400 text-xs uppercase">
@@ -87,14 +90,14 @@ const htmlTemplate = `
                 <tbody class="divide-y divide-slate-800">
                     {{ if ne .CurrentPath "/" }}
                     <tr class="hover:bg-slate-800/50 cursor-pointer" onclick="window.location.href='..'">
-                        <td class="px-6 py-3 text-blue-400"><i class="fas fa-arrow-left mr-2"></i> ..</td>
+                        <td class="px-6 py-3 text-blue-400 font-bold"><i class="fas fa-arrow-left mr-2"></i> ..</td>
                         <td colspan="2"></td>
                     </tr>
                     {{ end }}
                     {{ range .Files }}
                     <tr class="hover:bg-slate-800/50 group">
                         <td class="px-6 py-3">
-                            <a href="{{ if .IsDir }}{{ .Name }}/{{ else }}{{ .Name }}{{ end }}" class="flex items-center {{ if .IsDir }}text-yellow-500{{ else }}text-slate-300{{ end }}">
+                            <a href="{{ if .IsDir }}{{ .Name }}/{{ else }}{{ .Name }}{{ end }}" class="flex items-center {{ if .IsDir }}text-yellow-500{{ else }}text-slate-300{{ end }} hover:underline">
                                 <i class="fas {{ if .IsDir }}fa-folder{{ else }}fa-file-alt{{ end }} mr-3"></i>
                                 {{ .Name }}
                             </a>
@@ -113,7 +116,7 @@ const htmlTemplate = `
                                 <i class="fas fa-edit"></i>
                             </a>
                             {{ end }}
-                            <button onclick="deleteItem('{{ .Name }}')" class="text-slate-600 hover:text-red-500 text-sm">
+                            <button onclick="deleteItem('{{ .Name }}')" class="text-slate-600 hover:text-red-500 text-sm transition">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </td>
@@ -124,15 +127,17 @@ const htmlTemplate = `
         </div>
     </div>
 
-    <!-- Editor Modal (Same as before) -->
+    <!-- Editor Modal -->
     {{ if .EditFile }}
-    <div class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-        <div class="bg-[#0d1117] w-full h-full max-w-5xl rounded-xl border border-slate-700 flex flex-col">
-            <div class="p-4 border-b border-slate-700 flex justify-between items-center">
-                <h3 class="font-bold text-slate-300">Editing: {{ .EditFile.Name }}</h3>
+    <div class="fixed inset-0 bg-black/80 z-[150] flex items-center justify-center p-4">
+        <div class="bg-[#0d1117] w-full h-full max-w-6xl rounded-xl border border-slate-700 flex flex-col shadow-2xl">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/30">
+                <h3 class="font-bold text-slate-300 flex items-center gap-2">
+                    <i class="fas fa-pen text-blue-400"></i> Editing: {{ .EditFile.Name }}
+                </h3>
                 <div class="flex gap-2">
-                    <button onclick="saveFile()" class="bg-blue-600 hover:bg-blue-500 px-4 py-1 rounded text-sm font-bold">Save</button>
-                    <button onclick="window.location.href=window.location.pathname" class="bg-slate-700 px-4 py-1 rounded text-sm">Cancel</button>
+                    <button onclick="saveFile()" class="bg-blue-600 hover:bg-blue-500 px-6 py-1 rounded text-sm font-bold transition">Save</button>
+                    <button onclick="window.location.href=window.location.pathname" class="bg-slate-700 hover:bg-slate-600 px-4 py-1 rounded text-sm transition">Cancel</button>
                 </div>
             </div>
             <div id="editor-container" class="flex-grow"></div>
@@ -142,35 +147,16 @@ const htmlTemplate = `
     <script>
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
-
-            monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-                noSemanticValidation: true,
-                noSyntaxValidation: true
-            });
-            monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-                noSemanticValidation: true,
-                noSyntaxValidation: true
-            });
-            if (monaco.languages.json) {
-                monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-                    validate: false
-                });
-            }
-            if (monaco.languages.css) {
-                monaco.languages.css.cssDefaults.setDiagnosticsOptions({
-                    validate: false
-                });
-            }
-            // ----------------------------------------------
+            // Disable annoying syntax/semantic validation lines
+            monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: true });
+            if (monaco.languages.json) monaco.languages.json.jsonDefaults.setDiagnosticsOptions({ validate: false });
 
             window.editor = monaco.editor.create(document.getElementById('editor-container'), {
                 value: {{ .EditFile.Content }},
-                // We set language to 'plaintext' or a generic one to avoid logic errors,
-                // or you can leave your existing logic if you like the colors.
                 language: 'plaintext', 
                 theme: 'vs-dark',
                 automaticLayout: true,
-                minimap: { enabled: false }, // Bonus: cleans up the UI
+                minimap: { enabled: false },
                 fontSize: 14
             });
         });
@@ -188,20 +174,31 @@ const htmlTemplate = `
     {{ end }}
 
     <script>
-        // Drag and Drop Logic
+        // Drag and Drop Logic with Flashing Fix
         const dropZone = document.getElementById('drop-zone');
-        
+        let dragCounter = 0;
+
         window.addEventListener('dragover', (e) => {
+            e.preventDefault(); // Required to allow drop
+            e.stopPropagation();
+        });
+
+        window.addEventListener('dragenter', (e) => {
             e.preventDefault();
-            dropZone.classList.add('active');
+            dragCounter++;
+            if (dragCounter === 1) dropZone.classList.add('active');
         });
 
         window.addEventListener('dragleave', (e) => {
-            if (e.relatedTarget === null) dropZone.classList.remove('active');
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter === 0) dropZone.classList.remove('active');
         });
 
         window.addEventListener('drop', async (e) => {
             e.preventDefault();
+            e.stopPropagation();
+            dragCounter = 0;
             dropZone.classList.remove('active');
             
             const files = e.dataTransfer.files;
@@ -210,12 +207,7 @@ const htmlTemplate = `
             for (const file of files) {
                 const formData = new FormData();
                 formData.append('file', file);
-                
-                // Use the existing POST upload endpoint
-                await fetch(window.location.pathname, {
-                    method: 'POST',
-                    body: formData
-                });
+                await fetch(window.location.pathname, { method: 'POST', body: formData });
             }
             window.location.reload();
         });
@@ -246,7 +238,7 @@ func GetFile(rw http.ResponseWriter, r *http.Request, vol string) error {
 	targetPath := filepath.Join(vol, filepath.Clean(r.URL.Path))
 	editName := r.URL.Query().Get("edit")
 
-	// 1. Handle File Editing
+	// 1. Handle File Editing UI
 	if editName != "" && strings.Contains(r.Header.Get("Accept"), "text/html") {
 		content, _ := os.ReadFile(filepath.Join(targetPath, editName))
 		files := getFiles(targetPath)
@@ -259,16 +251,18 @@ func GetFile(rw http.ResponseWriter, r *http.Request, vol string) error {
 	}
 
 	// 2. Standard Directory Listing
-	info, _ := os.Stat(targetPath)
-	if info != nil && info.IsDir() {
+	info, err := os.Stat(targetPath)
+	if err == nil && info.IsDir() {
 		files := getFiles(targetPath)
 		if strings.Contains(r.Header.Get("Accept"), "text/html") {
 			tmpl := template.Must(template.New("ui").Parse(htmlTemplate))
 			return tmpl.Execute(rw, TemplateData{CurrentPath: filepath.Clean(r.URL.Path), Files: files})
 		}
+		rw.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(rw).Encode(files)
 	}
 
+	// 3. Serve single file for download
 	http.ServeFile(rw, r, targetPath)
 	return nil
 }
@@ -291,7 +285,7 @@ func getFiles(p string) []FileInfo {
 func UploadFile(rw http.ResponseWriter, r *http.Request, vol string) error {
 	targetPath := filepath.Join(vol, filepath.Clean(r.URL.Path))
 
-	// Handle Folder Creation (Custom MKCOL method)
+	// Handle Folder Creation
 	if r.Method == "MKCOL" {
 		return os.MkdirAll(targetPath, 0755)
 	}
@@ -301,23 +295,43 @@ func UploadFile(rw http.ResponseWriter, r *http.Request, vol string) error {
 		return unzip(targetPath, filepath.Dir(targetPath))
 	}
 
-	// Handle File Save (from Editor)
-	if r.URL.Query().Get("edit") != "" {
+	// Handle File Save from Editor
+	if editName := r.URL.Query().Get("edit"); editName != "" {
 		content, _ := io.ReadAll(r.Body)
-		return os.WriteFile(filepath.Join(targetPath, r.URL.Query().Get("edit")), content, 0644)
+		return os.WriteFile(filepath.Join(targetPath, editName), content, 0644)
 	}
 
-	// Handle Normal Multipart Upload
+	// Handle Multipart Upload (Drag & Drop or Form)
 	if strings.Contains(r.Header.Get("Content-Type"), "multipart/form-data") {
-		r.ParseMultipartForm(MaxFileSize)
-		file, header, _ := r.FormFile("file")
+		if err := r.ParseMultipartForm(MaxFileSize); err != nil {
+			return err
+		}
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			return err
+		}
 		defer file.Close()
-		out, _ := os.Create(filepath.Join(targetPath, header.Filename))
+
+		// Ensure we create the file in the current directory if targetPath is a dir
+		dest := targetPath
+		if info, err := os.Stat(targetPath); err == nil && info.IsDir() {
+			dest = filepath.Join(targetPath, header.Filename)
+		}
+
+		out, err := os.Create(dest)
+		if err != nil {
+			return err
+		}
 		defer out.Close()
 		io.Copy(out, file)
-		http.Redirect(rw, r, r.URL.Path, http.StatusSeeOther)
+
+		// Browser redirect for form uploads
+		if !strings.Contains(r.Header.Get("Accept"), "application/json") {
+			http.Redirect(rw, r, r.URL.Path, http.StatusSeeOther)
+		}
+		return nil
 	}
-	return nil
+	return fmt.Errorf("invalid upload request")
 }
 
 func unzip(src, dest string) error {
@@ -333,9 +347,18 @@ func unzip(src, dest string) error {
 			os.MkdirAll(fpath, os.ModePerm)
 			continue
 		}
-		os.MkdirAll(filepath.Dir(fpath), os.ModePerm)
-		outFile, _ := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
-		rc, _ := f.Open()
+		if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
+			return err
+		}
+		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			return err
+		}
 		io.Copy(outFile, rc)
 		outFile.Close()
 		rc.Close()
