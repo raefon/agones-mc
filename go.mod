@@ -1,6 +1,6 @@
 module github.com/raefon/agones-mc
 
-go 1.23
+go 1.24
 
 require (
 	agones.dev/agones v1.54.0

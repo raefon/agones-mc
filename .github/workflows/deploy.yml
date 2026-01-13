@@ -21,7 +21,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23' # Updated to a modern stable version
+          go-version: '1.24' # Updated to a modern stable version
           cache: true
 
       # Standard setup for modern builds
