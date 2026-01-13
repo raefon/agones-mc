@@ -3,8 +3,6 @@ package cmd
 import (
 	"net/http"
 	"os"
-	"path"
-	"strings"
 
 	"github.com/raefon/agones-mc/internal/config"
 	"github.com/raefon/agones-mc/pkg/fileserver"
@@ -28,52 +26,40 @@ func init() {
 }
 
 func Run() error {
-
 	cfg := config.NewFileServerConfig()
 	vol := cfg.GetVolume()
 
+	// Get port from environment or default to 8081
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8081"
 	}
 
 	http.Handle("/", http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-
+		// All functions now take 'vol' as an argument to look in the right place
 		switch r.Method {
 		case http.MethodGet:
-
-			if err := fileserver.GetFile(rw, r); err != nil {
+			if err := fileserver.GetFile(rw, r, vol); err != nil {
 				logger.Error("error getting file", zap.Error(err))
 			}
 
-		case http.MethodPost:
-
+		case http.MethodPost, http.MethodPut:
+			// POST and PUT both use the same Upload logic
+			// (handles both new files and overwriting existing ones)
 			if err := fileserver.UploadFile(rw, r, vol); err != nil {
-				logger.Error("error uploading new file", zap.Error(err))
-			}
-
-		case http.MethodPut:
-
-			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/")
-			if _, err := os.Stat(path.Join(vol, r.URL.Path)); os.IsNotExist(err) {
-				http.Error(rw, err.Error(), http.StatusNotFound)
-				return
-			}
-
-			if err := fileserver.UploadFile(rw, r, vol); err != nil {
-				logger.Error("error editing file", zap.Error(err))
+				logger.Error("error uploading/editing file", zap.Error(err))
 			}
 
 		case http.MethodDelete:
-
-			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/")
-			if err := fileserver.DeleteFile(rw, r, path.Join(r.URL.Path, vol), vol); err != nil {
+			if err := fileserver.DeleteFile(rw, r, vol); err != nil {
 				logger.Error("error deleting file", zap.Error(err))
 			}
 
+		default:
+			http.Error(rw, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
 
-	logger.Info("starting server on :" + port)
-	return http.ListenAndServe(":"+port, nil) // 2. Use the dynamic port
+	logger.Info("starting server on :"+port, zap.String("volume", vol))
+	return http.ListenAndServe(":"+port, nil)
 }

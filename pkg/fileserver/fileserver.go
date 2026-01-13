@@ -1,117 +1,118 @@
 package fileserver
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
-	"path"
-	"regexp"
+	"path/filepath"
+	"strings"
 )
 
-const MaxFileSize int64 = 5 << 10
+// MaxFileSize: 100MB (5KB was too small for Minecraft worlds/configs)
+const MaxFileSize int64 = 100 << 20
 
-// Wrapper for http.ResponseWritter for intercepting
-// the written body buffer and headers before being sent back
-type appResWriter struct {
-	http.ResponseWriter
-	buf        *bytes.Buffer
-	statusCode int
-}
+func GetFile(rw http.ResponseWriter, r *http.Request, vol string) error {
+	// 1. Clean and join the volume path with the URL path
+	// This prevents ".." directory traversal attacks
+	targetPath := filepath.Join(vol, filepath.Clean(r.URL.Path))
 
-// Overwrites the http.ReponseWriter.Write method to write to a local buffer
-// buffer can then be used to intercept the written response body
-func (rw *appResWriter) Write(b []byte) (int, error) {
-	return rw.buf.Write(b)
-}
-
-// Overwrites the http.ReponseWriter.WriteHeader method to write to the status code to a local field
-// writing to statusCode can then be delayed or overwritten
-func (rw *appResWriter) WriteHeader(statusCode int) {
-	rw.statusCode = statusCode
-}
-
-func GetFile(rw http.ResponseWriter, r *http.Request) error {
-
-	// ResponseWriter wrapper
-	dummyRw := appResWriter{
-		ResponseWriter: rw,
-		buf:            &bytes.Buffer{},
-	}
-
-	http.FileServer(http.Dir(".")).ServeHTTP(&dummyRw, r)
-
-	if dummyRw.statusCode == 204 || dummyRw.statusCode >= 300 {
-		rw.WriteHeader(dummyRw.statusCode)
+	// Ensure the user hasn't tried to escape the volume directory
+	if !strings.HasPrefix(targetPath, vol) {
+		http.Error(rw, "Forbidden", http.StatusForbidden)
 		return nil
 	}
 
-	if rw.Header().Get("Accept-Ranges") != "bytes" {
-		rw.Header().Set("Content-Type", "application/json")
-		rw.Header().Del("Last-Modified")
-
-		files := []map[string]string{}
-
-		scanner := bufio.NewScanner(dummyRw.buf)
-		for scanner.Scan() {
-
-			text := scanner.Text()
-
-			reg := regexp.MustCompile(`^<a href=\"([a-zA-z0-9\-\_\.\/]+)\">([a-zA-z0-9\-\_\.\/]+)<\/a>`)
-
-			if matches := reg.FindStringSubmatch(text); len(matches) > 0 {
-				files = append(files, map[string]string{"name": matches[1]})
-			}
-		}
-
-		if err := json.NewEncoder(rw).Encode(files); err != nil {
-			http.Error(rw, "error encoding JSON", http.StatusInternalServerError)
-			return err
-		}
+	// 2. Check if the path is a directory or a file
+	info, err := os.Stat(targetPath)
+	if os.IsNotExist(err) {
+		http.NotFound(rw, r)
+		return nil
 	}
 
-	_, err := io.Copy(rw, dummyRw.buf)
-	return err
+	if info.IsDir() {
+		// 3. If Directory: Return JSON list of files
+		files, err := os.ReadDir(targetPath)
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return err
+		}
+
+		fileList := []map[string]interface{}{}
+		for _, f := range files {
+			finfo, _ := f.Info()
+			fileList = append(fileList, map[string]interface{}{
+				"name":  f.Name(),
+				"isDir": f.IsDir(),
+				"size":  finfo.Size(),
+			})
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
+		return json.NewEncoder(rw).Encode(fileList)
+	}
+
+	// 4. If File: Serve the actual file content (for downloading)
+	http.ServeFile(rw, r, targetPath)
+	return nil
 }
 
 func UploadFile(rw http.ResponseWriter, r *http.Request, vol string) error {
+	// Limit upload size
 	r.Body = http.MaxBytesReader(rw, r.Body, MaxFileSize)
 
 	if err := r.ParseMultipartForm(MaxFileSize); err != nil {
-		http.Error(rw, err.Error(), http.StatusRequestEntityTooLarge)
+		http.Error(rw, "File too large or invalid form", http.StatusRequestEntityTooLarge)
 		return err
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(rw, err.Error(), http.StatusBadRequest)
+		http.Error(rw, "Missing file field in form", http.StatusBadRequest)
 		return err
 	}
-
 	defer file.Close()
 
-	f, err := os.Create(path.Join(vol, header.Filename))
+	// Determine destination: if URL is /data/subfolder, put it there
+	targetDir := filepath.Join(vol, filepath.Clean(r.URL.Path))
+	// If the URL path is a file, we use the directory containing it
+	stat, err := os.Stat(targetDir)
+	if err == nil && !stat.IsDir() {
+		targetDir = filepath.Dir(targetDir)
+	}
+
+	destPath := filepath.Join(targetDir, header.Filename)
+
+	f, err := os.Create(destPath)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return err
 	}
-
 	defer f.Close()
 
 	if _, err := io.Copy(f, file); err != nil {
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		http.Error(rw, "Failed to save file", http.StatusInternalServerError)
 		return err
 	}
 
+	rw.WriteHeader(http.StatusCreated)
 	return nil
 }
 
-func DeleteFile(rw http.ResponseWriter, r *http.Request, vol string, path string) error {
-	if err := os.Remove(path); err != nil {
+func DeleteFile(rw http.ResponseWriter, r *http.Request, vol string) error {
+	targetPath := filepath.Join(vol, filepath.Clean(r.URL.Path))
+
+	// Safety check: Don't allow deleting the root volume itself
+	if targetPath == vol {
+		http.Error(rw, "Cannot delete volume root", http.StatusForbidden)
+		return nil
+	}
+
+	if err := os.RemoveAll(targetPath); err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return err
 	}
+
+	rw.WriteHeader(http.StatusNoContent)
 	return nil
 }
