@@ -40,8 +40,20 @@ const htmlTemplate = `
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs/editor/editor.main.min.css">
+    <style>
+        #drop-zone.active { display: flex !important; }
+    </style>
 </head>
 <body class="bg-[#0d1117] text-slate-200 font-sans">
+    <!-- Drag and Drop Overlay -->
+    <div id="drop-zone" class="fixed inset-0 z-[100] bg-blue-600/20 border-4 border-dashed border-blue-500 hidden items-center justify-center backdrop-blur-sm">
+        <div class="bg-[#161b22] p-8 rounded-2xl shadow-2xl text-center border border-blue-500/50">
+            <i class="fas fa-cloud-upload-alt text-6xl text-blue-400 mb-4"></i>
+            <h2 class="text-2xl font-bold">Drop files to upload</h2>
+            <p class="text-slate-400">Uploading to /data{{ .CurrentPath }}</p>
+        </div>
+    </div>
+
     <div class="max-w-6xl mx-auto py-8 px-4">
         <!-- Header -->
         <div class="flex flex-wrap justify-between items-end gap-4 mb-6">
@@ -56,13 +68,13 @@ const htmlTemplate = `
                     <i class="fas fa-folder-plus mr-2"></i>New Folder
                 </button>
                 <form action="?upload" method="POST" enctype="multipart/form-data" class="flex bg-slate-800 rounded border border-slate-700">
-                    <input type="file" name="file" class="text-xs p-1">
+                    <input type="file" name="file" class="text-xs p-1" id="fileInput" onchange="this.form.submit()">
                     <button type="submit" class="bg-green-600 hover:bg-green-500 px-3 py-1 text-sm font-bold">Upload</button>
                 </form>
             </div>
         </div>
 
-        <!-- Explorer -->
+        <!-- Explorer Table (Same as before) -->
         <div class="bg-[#161b22] rounded-lg border border-slate-700 shadow-xl overflow-hidden">
             <table class="w-full text-left">
                 <thead class="bg-slate-800/50 text-slate-400 text-xs uppercase">
@@ -112,7 +124,7 @@ const htmlTemplate = `
         </div>
     </div>
 
-    <!-- Editor Modal -->
+    <!-- Editor Modal (Same as before) -->
     {{ if .EditFile }}
     <div class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
         <div class="bg-[#0d1117] w-full h-full max-w-5xl rounded-xl border border-slate-700 flex flex-col">
@@ -132,7 +144,6 @@ const htmlTemplate = `
         require(['vs/editor/editor.main'], function() {
             window.editor = monaco.editor.create(document.getElementById('editor-container'), {
                 value: {{ .EditFile.Content }},
-                language: 'javascript', // or detect based on extension
                 theme: 'vs-dark',
                 automaticLayout: true
             });
@@ -144,12 +155,43 @@ const htmlTemplate = `
                 body: content
             });
             if (res.ok) window.location.href = window.location.pathname;
-            else alert('Save failed');
         }
     </script>
     {{ end }}
 
     <script>
+        // Drag and Drop Logic
+        const dropZone = document.getElementById('drop-zone');
+        
+        window.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('active');
+        });
+
+        window.addEventListener('dragleave', (e) => {
+            if (e.relatedTarget === null) dropZone.classList.remove('active');
+        });
+
+        window.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('active');
+            
+            const files = e.dataTransfer.files;
+            if (files.length === 0) return;
+
+            for (const file of files) {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // Use the existing POST upload endpoint
+                await fetch(window.location.pathname, {
+                    method: 'POST',
+                    body: formData
+                });
+            }
+            window.location.reload();
+        });
+
         async function deleteItem(name) {
             if (confirm('Delete ' + name + '?')) {
                 await fetch(window.location.pathname + (window.location.pathname.endsWith('/') ? '' : '/') + name, { method: 'DELETE' });
