@@ -1,4 +1,4 @@
-SHELL = /bin/bash
+SHELL = /bin/sh
 BINARY := agones-mc
 IMAGE := ghcr.io/raefon/$(BINARY)
 COMMIT := $(shell git rev-parse --short HEAD)
