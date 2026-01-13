@@ -13,7 +13,7 @@ import (
 var fileServerCmd = cobra.Command{
 	Use:   "fileserver",
 	Short: "Minecraft GameServer pod file server",
-	Long:  "Pod file server for viewing and editing minecraft world data and config files in the minecraft server's data directory",
+	Long:  "A web-based file manager for viewing, editing, and managing Minecraft world data inside the Agones GameServer pod.",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := Run(); err != nil {
 			logger.Fatal("file server error", zap.Error(err))
@@ -26,40 +26,57 @@ func init() {
 }
 
 func Run() error {
+	// 1. Load Configuration (Volume path, etc.)
 	cfg := config.NewFileServerConfig()
-	vol := cfg.GetVolume()
+	vol := cfg.GetVolume() // Usually "/data"
 
-	// Get port from environment or default to 8081
+	// 2. Resolve Port
+	// We default to 8081 because Agones Sidecar uses 8080
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8081"
 	}
 
-	http.Handle("/", http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		// All functions now take 'vol' as an argument to look in the right place
+	// 3. Define the Request Handler
+	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
+		var err error
+
 		switch r.Method {
 		case http.MethodGet:
-			if err := fileserver.GetFile(rw, r, vol); err != nil {
-				logger.Error("error getting file", zap.Error(err))
-			}
+			// List directory (JSON or HTML UI) or download file
+			err = fileserver.GetFile(rw, r, vol)
 
 		case http.MethodPost, http.MethodPut:
-			// POST and PUT both use the same Upload logic
-			// (handles both new files and overwriting existing ones)
-			if err := fileserver.UploadFile(rw, r, vol); err != nil {
-				logger.Error("error uploading/editing file", zap.Error(err))
-			}
+			// Handles Uploads, Editing existing files, and ZIP extraction
+			err = fileserver.UploadFile(rw, r, vol)
+
+		case "MKCOL":
+			// Custom method for Creating Folders (Directory Creation)
+			err = fileserver.UploadFile(rw, r, vol)
 
 		case http.MethodDelete:
-			if err := fileserver.DeleteFile(rw, r, vol); err != nil {
-				logger.Error("error deleting file", zap.Error(err))
-			}
+			// Remove files or folders
+			err = fileserver.DeleteFile(rw, r, vol)
 
 		default:
 			http.Error(rw, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	}))
 
-	logger.Info("starting server on :"+port, zap.String("volume", vol))
+		// Log any errors that occurred during the request
+		if err != nil {
+			logger.Error("request error",
+				zap.String("method", r.Method),
+				zap.String("path", r.URL.Path),
+				zap.Error(err),
+			)
+		}
+	})
+
+	// 4. Start the Server
+	logger.Info("starting web file manager",
+		zap.String("port", port),
+		zap.String("volume", vol),
+	)
+
 	return http.ListenAndServe(":"+port, nil)
 }

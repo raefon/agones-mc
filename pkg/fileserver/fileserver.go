@@ -1,8 +1,8 @@
 package fileserver
 
 import (
+	"archive/zip"
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"io"
 	"net/http"
@@ -13,75 +13,96 @@ import (
 
 const MaxFileSize int64 = 100 << 20
 
-// TemplateData for the HTML UI
 type TemplateData struct {
 	CurrentPath string
 	Files       []FileInfo
+	EditFile    *EditData
+}
+
+type EditData struct {
+	Name    string
+	Content string
 }
 
 type FileInfo struct {
 	Name  string `json:"name"`
 	IsDir bool   `json:"isDir"`
 	Size  int64  `json:"size"`
+	Ext   string `json:"ext"`
 }
 
-// HTML Template using Tailwind CSS
 const htmlTemplate = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft File Manager</title>
+    <title>MC Manager - {{ .CurrentPath }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs/editor/editor.main.min.css">
 </head>
-<body class="bg-slate-900 text-slate-100 font-sans">
-    <div class="max-w-5xl mx-auto py-10 px-4">
-        <header class="mb-8 flex justify-between items-center">
+<body class="bg-[#0d1117] text-slate-200 font-sans">
+    <div class="max-w-6xl mx-auto py-8 px-4">
+        <!-- Header -->
+        <div class="flex flex-wrap justify-between items-end gap-4 mb-6">
             <div>
-                <h1 class="text-3xl font-bold text-green-400"><i class="fas fa-cubes mr-2"></i>World Manager</h1>
-                <p class="text-slate-400 mt-1">Path: <span class="font-mono bg-slate-800 px-2 py-1 rounded text-sm text-slate-300">{{ .CurrentPath }}</span></p>
+                <h1 class="text-2xl font-bold text-green-400 flex items-center gap-2">
+                    <i class="fas fa-server"></i> Minecraft File Manager
+                </h1>
+                <p class="text-slate-500 font-mono text-sm mt-1">/data{{ .CurrentPath }}</p>
             </div>
-            <form action="?upload" method="POST" enctype="multipart/form-data" class="flex gap-2 bg-slate-800 p-2 rounded-lg border border-slate-700">
-                <input type="file" name="file" class="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-500 file:text-white hover:file:bg-green-600 cursor-pointer">
-                <button type="submit" class="bg-blue-600 px-4 py-2 rounded text-sm font-bold hover:bg-blue-500 transition">Upload</button>
-            </form>
-        </header>
+            <div class="flex gap-2">
+                <button onclick="promptMkdir()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm font-semibold">
+                    <i class="fas fa-folder-plus mr-2"></i>New Folder
+                </button>
+                <form action="?upload" method="POST" enctype="multipart/form-data" class="flex bg-slate-800 rounded border border-slate-700">
+                    <input type="file" name="file" class="text-xs p-1">
+                    <button type="submit" class="bg-green-600 hover:bg-green-500 px-3 py-1 text-sm font-bold">Upload</button>
+                </form>
+            </div>
+        </div>
 
-        <div class="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 overflow-hidden">
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="bg-slate-700/50 text-slate-300 uppercase text-xs">
-                        <th class="px-6 py-4">Name</th>
-                        <th class="px-6 py-4 text-right">Size</th>
-                        <th class="px-6 py-4 text-center w-32">Actions</th>
+        <!-- Explorer -->
+        <div class="bg-[#161b22] rounded-lg border border-slate-700 shadow-xl overflow-hidden">
+            <table class="w-full text-left">
+                <thead class="bg-slate-800/50 text-slate-400 text-xs uppercase">
+                    <tr>
+                        <th class="px-6 py-3">Name</th>
+                        <th class="px-6 py-3 text-right">Size</th>
+                        <th class="px-6 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-700">
+                <tbody class="divide-y divide-slate-800">
                     {{ if ne .CurrentPath "/" }}
-                    <tr class="hover:bg-slate-700/30 transition">
-                        <td class="px-6 py-4" colspan="3">
-                            <a href=".." class="text-blue-400 hover:text-blue-300 flex items-center">
-                                <i class="fas fa-level-up-alt mr-3"></i> ..
-                            </a>
-                        </td>
+                    <tr class="hover:bg-slate-800/50 cursor-pointer" onclick="window.location.href='..'">
+                        <td class="px-6 py-3 text-blue-400"><i class="fas fa-arrow-left mr-2"></i> ..</td>
+                        <td colspan="2"></td>
                     </tr>
                     {{ end }}
                     {{ range .Files }}
-                    <tr class="hover:bg-slate-700/30 transition group">
-                        <td class="px-6 py-4">
-                            <a href="{{ if .IsDir }}{{ .Name }}/{{ else }}{{ .Name }}{{ end }}" class="flex items-center {{ if .IsDir }}text-yellow-400 font-semibold{{ else }}text-slate-200{{ end }} hover:underline">
-                                <i class="fas {{ if .IsDir }}fa-folder{{ else }}fa-file-code{{ end }} mr-3"></i>
+                    <tr class="hover:bg-slate-800/50 group">
+                        <td class="px-6 py-3">
+                            <a href="{{ if .IsDir }}{{ .Name }}/{{ else }}{{ .Name }}{{ end }}" class="flex items-center {{ if .IsDir }}text-yellow-500{{ else }}text-slate-300{{ end }}">
+                                <i class="fas {{ if .IsDir }}fa-folder{{ else }}fa-file-alt{{ end }} mr-3"></i>
                                 {{ .Name }}
                             </a>
                         </td>
-                        <td class="px-6 py-4 text-right font-mono text-sm text-slate-400">
+                        <td class="px-6 py-3 text-right text-xs text-slate-500 font-mono">
                             {{ if .IsDir }}--{{ else }}{{ .Size }} B{{ end }}
                         </td>
-                        <td class="px-6 py-4 text-center">
-                            <button onclick="deleteFile('{{ .Name }}')" class="text-slate-500 hover:text-red-500 transition px-2">
-                                <i class="fas fa-trash-alt"></i>
+                        <td class="px-6 py-3 text-right space-x-3">
+                            {{ if eq .Ext ".zip" }}
+                            <button onclick="extractZip('{{ .Name }}')" class="text-orange-400 hover:text-orange-300 text-sm" title="Extract">
+                                <i class="fas fa-file-archive"></i>
+                            </button>
+                            {{ end }}
+                            {{ if not .IsDir }}
+                            <a href="?edit={{ .Name }}" class="text-blue-400 hover:text-blue-300 text-sm" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {{ end }}
+                            <button onclick="deleteItem('{{ .Name }}')" class="text-slate-600 hover:text-red-500 text-sm">
+                                <i class="fas fa-trash"></i>
                             </button>
                         </td>
                     </tr>
@@ -91,12 +112,60 @@ const htmlTemplate = `
         </div>
     </div>
 
+    <!-- Editor Modal -->
+    {{ if .EditFile }}
+    <div class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-[#0d1117] w-full h-full max-w-5xl rounded-xl border border-slate-700 flex flex-col">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+                <h3 class="font-bold text-slate-300">Editing: {{ .EditFile.Name }}</h3>
+                <div class="flex gap-2">
+                    <button onclick="saveFile()" class="bg-blue-600 hover:bg-blue-500 px-4 py-1 rounded text-sm font-bold">Save</button>
+                    <button onclick="window.location.href=window.location.pathname" class="bg-slate-700 px-4 py-1 rounded text-sm">Cancel</button>
+                </div>
+            </div>
+            <div id="editor-container" class="flex-grow"></div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs/loader.min.js"></script>
     <script>
-        async function deleteFile(name) {
-            if (!confirm('Are you sure you want to delete ' + name + '?')) return;
-            const res = await fetch(window.location.pathname + (window.location.pathname.endsWith('/') ? '' : '/') + name, { method: 'DELETE' });
-            if (res.ok) window.location.reload();
-            else alert('Failed to delete');
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            window.editor = monaco.editor.create(document.getElementById('editor-container'), {
+                value: {{ .EditFile.Content }},
+                language: 'javascript', // or detect based on extension
+                theme: 'vs-dark',
+                automaticLayout: true
+            });
+        });
+        async function saveFile() {
+            const content = window.editor.getValue();
+            const res = await fetch(window.location.pathname + "?edit={{ .EditFile.Name }}", {
+                method: 'POST',
+                body: content
+            });
+            if (res.ok) window.location.href = window.location.pathname;
+            else alert('Save failed');
+        }
+    </script>
+    {{ end }}
+
+    <script>
+        async function deleteItem(name) {
+            if (confirm('Delete ' + name + '?')) {
+                await fetch(window.location.pathname + (window.location.pathname.endsWith('/') ? '' : '/') + name, { method: 'DELETE' });
+                location.reload();
+            }
+        }
+        async function extractZip(name) {
+            await fetch(window.location.pathname + (window.location.pathname.endsWith('/') ? '' : '/') + name + "?extract=true", { method: 'POST' });
+            location.reload();
+        }
+        async function promptMkdir() {
+            const name = prompt('New folder name:');
+            if (name) {
+                await fetch(window.location.pathname + (window.location.pathname.endsWith('/') ? '' : '/') + name, { method: 'MKCOL' });
+                location.reload();
+            }
         }
     </script>
 </body>
@@ -105,84 +174,105 @@ const htmlTemplate = `
 
 func GetFile(rw http.ResponseWriter, r *http.Request, vol string) error {
 	targetPath := filepath.Join(vol, filepath.Clean(r.URL.Path))
+	editName := r.URL.Query().Get("edit")
 
-	if !strings.HasPrefix(targetPath, vol) {
-		http.Error(rw, "Forbidden", http.StatusForbidden)
-		return nil
+	// 1. Handle File Editing
+	if editName != "" && strings.Contains(r.Header.Get("Accept"), "text/html") {
+		content, _ := os.ReadFile(filepath.Join(targetPath, editName))
+		files := getFiles(targetPath)
+		tmpl := template.Must(template.New("ui").Parse(htmlTemplate))
+		return tmpl.Execute(rw, TemplateData{
+			CurrentPath: filepath.Clean(r.URL.Path),
+			Files:       files,
+			EditFile:    &EditData{Name: editName, Content: string(content)},
+		})
 	}
 
-	info, err := os.Stat(targetPath)
-	if os.IsNotExist(err) {
-		http.NotFound(rw, r)
-		return nil
-	}
-
-	if info.IsDir() {
-		files, err := os.ReadDir(targetPath)
-		if err != nil {
-			return err
-		}
-
-		var fileList []FileInfo
-		for _, f := range files {
-			finfo, _ := f.Info()
-			fileList = append(fileList, FileInfo{
-				Name:  f.Name(),
-				IsDir: f.IsDir(),
-				Size:  finfo.Size(),
-			})
-		}
-
-		// Detect if requester wants HTML (Browser) or JSON (API)
+	// 2. Standard Directory Listing
+	info, _ := os.Stat(targetPath)
+	if info != nil && info.IsDir() {
+		files := getFiles(targetPath)
 		if strings.Contains(r.Header.Get("Accept"), "text/html") {
 			tmpl := template.Must(template.New("ui").Parse(htmlTemplate))
-			rw.Header().Set("Content-Type", "text/html")
-			return tmpl.Execute(rw, TemplateData{
-				CurrentPath: filepath.Clean(r.URL.Path),
-				Files:       fileList,
-			})
+			return tmpl.Execute(rw, TemplateData{CurrentPath: filepath.Clean(r.URL.Path), Files: files})
 		}
-
-		rw.Header().Set("Content-Type", "application/json")
-		return json.NewEncoder(rw).Encode(fileList)
+		return json.NewEncoder(rw).Encode(files)
 	}
 
 	http.ServeFile(rw, r, targetPath)
 	return nil
 }
 
-// ... UploadFile and DeleteFile functions remain same as before ...
+func getFiles(p string) []FileInfo {
+	entries, _ := os.ReadDir(p)
+	var list []FileInfo
+	for _, e := range entries {
+		info, _ := e.Info()
+		list = append(list, FileInfo{
+			Name:  e.Name(),
+			IsDir: e.IsDir(),
+			Size:  info.Size(),
+			Ext:   filepath.Ext(e.Name()),
+		})
+	}
+	return list
+}
+
 func UploadFile(rw http.ResponseWriter, r *http.Request, vol string) error {
-	r.Body = http.MaxBytesReader(rw, r.Body, MaxFileSize)
-	// Handle regular form upload (browser)
+	targetPath := filepath.Join(vol, filepath.Clean(r.URL.Path))
+
+	// Handle Folder Creation (Custom MKCOL method)
+	if r.Method == "MKCOL" {
+		return os.MkdirAll(targetPath, 0755)
+	}
+
+	// Handle Zip Extraction
+	if r.URL.Query().Get("extract") == "true" {
+		return unzip(targetPath, filepath.Dir(targetPath))
+	}
+
+	// Handle File Save (from Editor)
+	if r.URL.Query().Get("edit") != "" {
+		content, _ := io.ReadAll(r.Body)
+		return os.WriteFile(filepath.Join(targetPath, r.URL.Query().Get("edit")), content, 0644)
+	}
+
+	// Handle Normal Multipart Upload
 	if strings.Contains(r.Header.Get("Content-Type"), "multipart/form-data") {
-		err := r.ParseMultipartForm(MaxFileSize)
-		if err != nil {
-			return err
-		}
-		file, header, err := r.FormFile("file")
-		if err != nil {
-			return err
-		}
+		r.ParseMultipartForm(MaxFileSize)
+		file, header, _ := r.FormFile("file")
 		defer file.Close()
-		target := filepath.Join(vol, filepath.Clean(r.URL.Path), header.Filename)
-		out, err := os.Create(target)
-		if err != nil {
-			return err
-		}
+		out, _ := os.Create(filepath.Join(targetPath, header.Filename))
 		defer out.Close()
 		io.Copy(out, file)
-		// Redirect back to folder after web upload
 		http.Redirect(rw, r, r.URL.Path, http.StatusSeeOther)
-		return nil
 	}
-	return fmt.Errorf("unsupported upload type")
+	return nil
+}
+
+func unzip(src, dest string) error {
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		fpath := filepath.Join(dest, f.Name)
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(fpath, os.ModePerm)
+			continue
+		}
+		os.MkdirAll(filepath.Dir(fpath), os.ModePerm)
+		outFile, _ := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		rc, _ := f.Open()
+		io.Copy(outFile, rc)
+		outFile.Close()
+		rc.Close()
+	}
+	return nil
 }
 
 func DeleteFile(rw http.ResponseWriter, r *http.Request, vol string) error {
-	targetPath := filepath.Join(vol, filepath.Clean(r.URL.Path))
-	if targetPath == vol {
-		return fmt.Errorf("cannot delete root")
-	}
-	return os.RemoveAll(targetPath)
+	return os.RemoveAll(filepath.Join(vol, filepath.Clean(r.URL.Path)))
 }
